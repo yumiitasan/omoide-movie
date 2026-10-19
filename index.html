@@ -1,0 +1,25 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow,noarchive"><title>おもいでムービー</title>
+<style>
+:root{color-scheme:dark}body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#151a1c;color:#eef3f1;font-family:"Hiragino Sans","Yu Gothic",sans-serif}
+.box{width:min(440px,92vw);background:#1f2629;border:2px solid #2ec4a6;border-radius:18px;padding:30px 28px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4)}
+h1{margin:6px 0 4px;font-size:28px}p{color:#b9c4c1;line-height:1.7;margin:6px 0 16px}
+input{width:100%;box-sizing:border-box;font-size:20px;padding:12px 14px;border-radius:12px;border:1px solid #47555a;background:#12171a;color:#fff;text-align:center}
+button{margin-top:14px;width:100%;font-size:20px;font-weight:800;padding:12px;border:0;border-radius:12px;background:#2ec4a6;color:#062b24;cursor:pointer}
+button:disabled{opacity:.5}label{display:flex;gap:8px;align-items:center;justify-content:center;margin-top:12px;color:#b9c4c1;font-size:14px}
+.err{color:#ff8a8a;min-height:1.6em;margin-top:10px;font-weight:700}.bar{height:8px;background:#333;border-radius:4px;overflow:hidden;margin-top:14px;display:none}.bar i{display:block;height:100%;width:0;background:#2ec4a6}
+.note{font-size:13px;color:#8e9b98;margin-top:16px}
+</style></head><body>
+<form class="box" id="f" autocomplete="off"><div style="font-size:48px">🎬</div><h1>おもいでムービー</h1><p>合言葉を入れてください</p>
+<input id="pw" type="password" placeholder="合言葉" autofocus><label><input id="keep" type="checkbox" style="width:auto"> この端末で覚える</label>
+<button id="go">開く</button><div class="bar" id="bar"><i id="fill"></i></div><div class="err" id="err"></div>
+<div class="note">パソコンのChromeかEdgeで開いてください。写真や動画はインターネットに送られません。</div></form>
+<script>
+const $=id=>document.getElementById(id);let blob=null;
+async function load(){if(blob)return blob;const r=await fetch('app.bin',{cache:'no-cache'});if(!r.ok)throw new Error('読み込めませんでした');const total=Number(r.headers.get('content-length'))||0;const rd=r.body.getReader();const parts=[];let got=0;$('bar').style.display='block';for(;;){const {done,value}=await rd.read();if(done)break;parts.push(value);got+=value.length;if(total)$('fill').style.width=(got/total*100).toFixed(1)+'%';}blob=new Blob(parts);return blob;}
+async function open(pass){const buf=new Uint8Array(await (await load()).arrayBuffer());const n=new DataView(buf.buffer).getUint32(0);const head=JSON.parse(new TextDecoder().decode(buf.subarray(4,4+n)));const b64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+ const base=await crypto.subtle.importKey('raw',new TextEncoder().encode(pass.normalize('NFKC')),'PBKDF2',false,['deriveKey']);const key=await crypto.subtle.deriveKey({name:'PBKDF2',salt:b64(head.salt),iterations:head.iter,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['decrypt']);
+ const html=new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:b64(head.iv)},key,buf.subarray(4+n)));return html;}
+async function go(pass,remember){$('go').disabled=true;$('err').textContent='開いています…';try{const html=await open(pass);try{if(remember)localStorage.setItem('omoide-pass',pass);}catch(_){}document.open();document.write(html);document.close();}catch(e){$('go').disabled=false;$('err').textContent=e.name==='OperationError'?'合言葉がちがいます':'開けませんでした：'+e.message;try{localStorage.removeItem('omoide-pass');}catch(_){}}}
+$('f').onsubmit=e=>{e.preventDefault();const p=$('pw').value.trim();if(p)go(p,$('keep').checked);};
+try{const saved=localStorage.getItem('omoide-pass');if(saved){$('keep').checked=true;go(saved,true);}}catch(_){}
+</script></body></html>
