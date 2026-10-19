@@ -10,14 +10,16 @@ button:disabled{opacity:.5}label{display:flex;gap:8px;align-items:center;justify
 .note{font-size:13px;color:#8e9b98;margin-top:16px}
 </style></head><body>
 <form class="box" id="f" autocomplete="off"><div style="font-size:48px">🎬</div><h1>おもいでムービー</h1><p>合言葉を入れてください</p>
-<input id="pw" type="password" placeholder="合言葉" autofocus><label><input id="keep" type="checkbox" style="width:auto"> この端末で覚える</label>
+<input id="pw" type="text" placeholder="合言葉（ひらがな・カタカナどちらでもOK）" autofocus autocomplete="off" autocapitalize="off" spellcheck="false" lang="ja"><label><input id="keep" type="checkbox" style="width:auto"> この端末で覚える</label>
 <button id="go">開く</button><div class="bar" id="bar"><i id="fill"></i></div><div class="err" id="err"></div>
 <div class="note">パソコンのChromeかEdgeで開いてください。写真や動画はインターネットに送られません。</div></form>
 <script>
-const $=id=>document.getElementById(id);let blob=null;
+const $=id=>document.getElementById(id);
+// Same rule as tools/encrypt-app.cjs: full/half width unified, hiragana → katakana, spaces removed.
+const norm=s=>s.normalize('NFKC').replace(/\s+/g,'').replace(/[\u3041-\u3096]/g,c=>String.fromCharCode(c.charCodeAt(0)+0x60));let blob=null;
 async function load(){if(blob)return blob;const r=await fetch('app.bin',{cache:'no-cache'});if(!r.ok)throw new Error('読み込めませんでした');const total=Number(r.headers.get('content-length'))||0;const rd=r.body.getReader();const parts=[];let got=0;$('bar').style.display='block';for(;;){const {done,value}=await rd.read();if(done)break;parts.push(value);got+=value.length;if(total)$('fill').style.width=(got/total*100).toFixed(1)+'%';}blob=new Blob(parts);return blob;}
 async function open(pass){const buf=new Uint8Array(await (await load()).arrayBuffer());const n=new DataView(buf.buffer).getUint32(0);const head=JSON.parse(new TextDecoder().decode(buf.subarray(4,4+n)));const b64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
- const base=await crypto.subtle.importKey('raw',new TextEncoder().encode(pass.normalize('NFKC')),'PBKDF2',false,['deriveKey']);const key=await crypto.subtle.deriveKey({name:'PBKDF2',salt:b64(head.salt),iterations:head.iter,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['decrypt']);
+ const base=await crypto.subtle.importKey('raw',new TextEncoder().encode(norm(pass)),'PBKDF2',false,['deriveKey']);const key=await crypto.subtle.deriveKey({name:'PBKDF2',salt:b64(head.salt),iterations:head.iter,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['decrypt']);
  const html=new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:b64(head.iv)},key,buf.subarray(4+n)));return html;}
 async function go(pass,remember){$('go').disabled=true;$('err').textContent='開いています…';try{const html=await open(pass);try{if(remember)localStorage.setItem('omoide-pass',pass);}catch(_){}document.open();document.write(html);document.close();}catch(e){$('go').disabled=false;$('err').textContent=e.name==='OperationError'?'合言葉がちがいます':'開けませんでした：'+e.message;try{localStorage.removeItem('omoide-pass');}catch(_){}}}
 $('f').onsubmit=e=>{e.preventDefault();const p=$('pw').value.trim();if(p)go(p,$('keep').checked);};
